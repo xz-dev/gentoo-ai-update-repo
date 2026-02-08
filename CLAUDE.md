@@ -74,6 +74,7 @@ Always read the package-level `CLAUDE.md` first when working on a specific packa
 6. **pkgcheck clean**: fix all errors, warnings are acceptable with justification.
 7. **One version, one commit** when committing (but YOU don't commit — the orchestrator does).
 8. **Error handling**: if unsure, preserve the scene. Print error details to stderr, exit non-zero. Don't hide failures.
+9. **NEVER leak secrets**. Do NOT hardcode any tokens, API keys, passwords, or credentials in any file. If a script needs authentication (e.g. GitHub API token to avoid rate limits), read it from an environment variable (e.g. `os.environ.get("GITHUB_TOKEN")`). Never write the actual token value into source code, comments, logs, or commit messages.
 
 ## Git Config (for reference)
 

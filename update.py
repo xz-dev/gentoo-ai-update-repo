@@ -355,6 +355,10 @@ def ensure_get_latest_version_script(
         - Use Python stdlib only (urllib.request, json, re) — no pip packages
         - If the version cannot be determined, raise an exception with "raise" in the error message
         - Print debug info to stderr only
+        - SECURITY: NEVER hardcode any tokens, API keys, or credentials in the script.
+          If authentication is needed (e.g. GitHub token for rate limits), read from
+          environment variable: os.environ.get("GITHUB_TOKEN"). The token itself must
+          NEVER appear in source code, comments, or output.
 
         Package: {category}/{package}
         Read the CLAUDE.md in this directory for package-specific API info.
