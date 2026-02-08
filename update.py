@@ -622,6 +622,9 @@ location = /var/db/repos/gentoo-ai-update-repo
 masters = gentoo
 REPOEOF
 
+# Accept testing keywords for this package
+echo "={category}/{package}-{version} **" > /etc/portage/package.accept_keywords/ai-test
+
 # Emerge the package
 emerge -1v ={category}/{package}-{version}
 
