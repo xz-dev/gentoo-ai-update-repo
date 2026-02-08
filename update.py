@@ -544,16 +544,30 @@ def ensure_test_script(pkg_dir: Path, category: str, package: str) -> Path | Non
         This script will be run inside a Gentoo stage3 container after emerging {category}/{package}.
         Usage: python3 test_ebuild.py VERSION
 
-        Requirements:
+        This is a black-box smoke test. Write tests that verify the package actually works,
+        not just that the binary exists. Use your judgement based on what this package does.
+
+        Required tests:
+        1. Version check: run the program and verify the VERSION string appears in output
+        2. Basic functionality: at least one test that exercises the program's core feature
+           - CLI tool: run it with typical input and check output is reasonable
+             (e.g. jq '. ' on a JSON string, fastfetch with a simple flag, grep on a pattern)
+           - Library: verify the .so exists and can be linked/imported
+           - Editor/TUI: verify it can open and exit cleanly (e.g. nvim -c ':q')
+           - Daemon: verify it starts, responds to a basic request, then stops
+           - Build tool: verify it can process a trivial input
+        3. Installed files: check that key files are installed where expected
+           (e.g. binary in /usr/bin, man page in /usr/share/man, config in /etc)
+
+        Keep it simple — no mocks, no network, no complex setup. Just verify the package
+        is installed and its core function works. Add more tests if they're obvious and cheap,
+        but don't over-engineer it.
+
+        Technical requirements:
         - Accept VERSION as first CLI argument
-        - Run basic smoke tests appropriate for this package type:
-          - CLI tool: check --version or --help output
-          - Library: check that import/linking works
-          - Editor: check that it can start with --version
-          - Daemon: check that it starts and responds
         - Use Python stdlib only — no pip packages
         - Exit 0 if all tests pass, non-zero if any fail
-        - Print test results to stdout
+        - Print each test result: [PASS] or [FAIL] with test name
 
         Read CLAUDE.md for package info.
     """)

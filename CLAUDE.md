@@ -43,12 +43,16 @@ When invoked by `update.py`, you will be asked to do one of:
 - Do NOT remove old ebuilds (maintainer decides)
 
 ### 3. Write `test_ebuild.py`
-- Package-specific smoke test script
+- Black-box smoke test, runs inside a Gentoo stage3 container after emerge
 - Must be runnable with `python3 test_ebuild.py VERSION`
-- Designed to run inside a Gentoo stage3 container
-- Test that the package installs and basic functionality works
+- Required tests:
+  1. **Version check**: run the program and verify VERSION string appears in output
+  2. **Core functionality**: at least one test exercising the main feature (e.g. CLI tool processes input, library can be loaded, editor opens and exits cleanly)
+  3. **Installed files**: check key files exist (binary in /usr/bin, man page, etc.)
+- Add more tests if obvious and cheap, but don't over-engineer
+- No mocks, no network, no complex setup
 - Exit 0 on pass, non-zero on fail
-- Examples: CLI tool → check `--version`, library → check import, editor → check it starts
+- Print each test: `[PASS]` or `[FAIL]` with name
 
 ### 4. Fix a failing `get_latest_version.py`
 - You'll receive the error output
