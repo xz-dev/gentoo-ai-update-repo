@@ -538,38 +538,53 @@ def ensure_test_script(pkg_dir: Path, category: str, package: str) -> Path | Non
 
     log("Invoking AI to create test_ebuild.py ...", "AI")
 
+    # Build the podman test command the AI can use to validate its script
+    gentoo_repo = SYSTEM_REPOS_DIR / "gentoo"
+    test_version = get_latest_version_from_ebuilds(pkg_dir, package) or "VERSION"
+    podman_test_cmd = (
+        f"podman run --rm --privileged"
+        f" -v {gentoo_repo}:/var/db/repos/gentoo:ro"
+        f" -v {REPO_DIR}:/var/db/repos/gentoo-ai-update-repo"
+        f" {CONTAINER_IMAGE} /bin/bash -c '"
+        f"mkdir -p /etc/portage/repos.conf && "
+        f'echo "[DEFAULT]\nmain-repo = gentoo\n[gentoo]\nlocation = /var/db/repos/gentoo" > /etc/portage/repos.conf/gentoo.conf && '
+        f'echo "[gentoo-ai-update-repo]\nlocation = /var/db/repos/gentoo-ai-update-repo\nmasters = gentoo" > /etc/portage/repos.conf/ai-overlay.conf && '
+        f'echo "={category}/{package}-{test_version} **" > /etc/portage/package.accept_keywords/ai-test && '
+        f"emerge -1v ={category}/{package}-{test_version} && "
+        f"python3 /var/db/repos/gentoo-ai-update-repo/{category}/{package}/test_ebuild.py {test_version}"
+        f"'"
+    )
+
     prompt = textwrap.dedent(f"""\
         Create a file called `test_ebuild.py` in the current directory.
 
-        This script will be run inside a Gentoo stage3 container after emerging {category}/{package}.
+        This is a black-box smoke test for {category}/{package}.
+        It runs inside a Gentoo stage3 container after the package is emerged.
         Usage: python3 test_ebuild.py VERSION
 
-        This is a black-box smoke test. Write tests that verify the package actually works,
-        not just that the binary exists. Use your judgement based on what this package does.
-
-        Required tests:
-        1. Version check: run the program and verify the VERSION string appears in output
-        2. Basic functionality: at least one test that exercises the program's core feature
-           - CLI tool: run it with typical input and check output is reasonable
-             (e.g. jq '. ' on a JSON string, fastfetch with a simple flag, grep on a pattern)
-           - Library: verify the .so exists and can be linked/imported
-           - Editor/TUI: verify it can open and exit cleanly (e.g. nvim -c ':q')
-           - Daemon: verify it starts, responds to a basic request, then stops
-           - Build tool: verify it can process a trivial input
-        3. Installed files: check that key files are installed where expected
-           (e.g. binary in /usr/bin, man page in /usr/share/man, config in /etc)
-
-        Keep it simple — no mocks, no network, no complex setup. Just verify the package
-        is installed and its core function works. Add more tests if they're obvious and cheap,
-        but don't over-engineer it.
+        Write tests that verify the package actually works. Use your judgement based
+        on what this package does. At minimum:
+        1. Version check: verify VERSION string appears in program output
+        2. Core functionality: exercise the program's main feature with real input
+        3. Installed files: check key files exist (binary, man page, etc.)
+        Add more tests if obvious and cheap, but keep it simple.
 
         Technical requirements:
         - Accept VERSION as first CLI argument
-        - Use Python stdlib only — no pip packages
-        - Exit 0 if all tests pass, non-zero if any fail
-        - Print each test result: [PASS] or [FAIL] with test name
+        - Python stdlib only — no pip packages
+        - Exit 0 if all pass, non-zero on any failure
+        - Print each test: [PASS] or [FAIL] with name
 
         Read CLAUDE.md for package info.
+
+        IMPORTANT: After writing test_ebuild.py, you MUST validate it yourself by running:
+
+        {podman_test_cmd}
+
+        This runs the full flow: emerge the package in a container, then run your test.
+        If any tests fail, analyze the output, fix the script, and re-run until all tests pass.
+        The overlay is mounted read-write so your edits take effect immediately.
+        Do not finish until the test passes in the container.
     """)
 
     result = run_ai(prompt, cwd=str(pkg_dir), model=AI_MODEL_CODE)
@@ -610,6 +625,7 @@ def run_container_test(
         "podman",
         "run",
         "--rm",
+        "--privileged",
         "-v",
         f"{gentoo_repo}:/var/db/repos/gentoo:ro",
         "-v",
