@@ -1,0 +1,40 @@
+{
+    "version": "1.0.0",
+    "system": {
+        "model": "k2.5-free",
+        "parallel_workers": 3,
+        "cache_ttl_hours": 24,
+        "confidence_threshold": 0.7
+    },
+    "paths": {
+        "ai_repo": "/var/db/repos/gentoo-ai-update-repo",
+        "gentoo_repo": "/var/db/repos/gentoo",
+        "cache_file": "data/version_cache.json",
+        "log_dir": "logs",
+        "backup_dir": "backups"
+    },
+    "search": {
+        "enabled_strategies": [
+            "github_releases",
+            "gitlab_releases",
+            "official_download",
+            "arch_linux"
+        ],
+        "max_retries": 3,
+        "timeout_seconds": 30
+    },
+    "validation": {
+        "enabled": true,
+        "sources": {
+            "github": {"enabled": true, "weight": 0.4},
+            "arch_linux": {"enabled": true, "weight": 0.3},
+            "pypi": {"enabled": true, "weight": 0.2},
+            "npm": {"enabled": true, "weight": 0.1}
+        }
+    },
+    "notifications": {
+        "on_update_needed": true,
+        "on_manual_review": true,
+        "on_error": true
+    }
+}
