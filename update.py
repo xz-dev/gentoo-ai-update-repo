@@ -26,7 +26,8 @@ from pathlib import Path
 
 REPO_DIR = Path("/var/db/repos/gentoo-ai-update-repo")
 SYSTEM_REPOS_DIR = Path("/var/db/repos")
-AI_MODEL = "opencode/kimi-k2.5-free"
+AI_MODEL_WEB = "opencode/kimi-k2.5-free"  # Good at web/API info, version checking
+AI_MODEL_CODE = "opencode/minimax-m2.1-free"  # Good at writing code, ebuilds, tests
 MAX_VERSION_RETRIES = 5
 CONTAINER_IMAGE = "docker.io/gentoo/stage3"
 
@@ -64,10 +65,14 @@ def run_cmd(
 
 
 def run_ai(
-    prompt: str, cwd: str, files: list[str] | None = None, timeout: int = 300
+    prompt: str,
+    cwd: str,
+    files: list[str] | None = None,
+    timeout: int = 300,
+    model: str = AI_MODEL_WEB,
 ) -> subprocess.CompletedProcess:
     """Invoke opencode AI agent and return result."""
-    cmd = ["opencode", "run", "-m", AI_MODEL]
+    cmd = ["opencode", "run", "-m", model]
     if files:
         for f in files:
             cmd.extend(["-f", f])
@@ -407,7 +412,7 @@ def run_get_latest_version(
 
     # All retries failed — ask AI to fix the script
     log("All retries failed. Asking AI to fix get_latest_version.py ...", "AI")
-    last_error = result.stderr.strip() if result else "Unknown error"
+    last_error = result.stderr.strip() if result else "Unknown error"  # type: ignore[possibly-unbound]
 
     fix_prompt = textwrap.dedent(f"""\
         The file `get_latest_version.py` in this directory is failing.
@@ -505,7 +510,7 @@ def update_ebuild(pkg_dir: Path, category: str, package: str, new_version: str) 
         Do NOT commit anything.
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=180)
+    result = run_ai(prompt, cwd=str(pkg_dir), timeout=180, model=AI_MODEL_CODE)
 
     # Verify the new ebuild was created
     new_ebuild = pkg_dir / f"{package}-{new_version}.ebuild"
@@ -560,7 +565,7 @@ def ensure_test_script(pkg_dir: Path, category: str, package: str) -> Path | Non
         Read CLAUDE.md for package info.
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=120)
+    result = run_ai(prompt, cwd=str(pkg_dir), timeout=120, model=AI_MODEL_CODE)
 
     if script_path.exists():
         log("test_ebuild.py created", "OK")
