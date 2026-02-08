@@ -8,8 +8,8 @@ from .version_checker import (
     UpstreamSource,
     SearchStrategy,
 )
-from .version_validator import MultiSourceValidator
-from .ebuild_updater import EbuildUpdater
+from .version_validator import MultiSourceValidator, ValidationResult
+from .ebuild_updater import EbuildUpdater, UpdateResult
 
 __version__ = "1.0.0"
 __author__ = "AI Gentoo Maintainer"
@@ -20,5 +20,7 @@ __all__ = [
     "UpstreamSource",
     "SearchStrategy",
     "MultiSourceValidator",
+    "ValidationResult",
     "EbuildUpdater",
+    "UpdateResult",
 ]
