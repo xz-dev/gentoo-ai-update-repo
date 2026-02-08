@@ -599,30 +599,49 @@ def run_container_test(
             log(f"Failed to pull container image: {pull.stderr}", "ERR")
             return False
 
-    # Run container with overlay mounted
+    # Run container with host repos mounted
+    # The stage3 image has a profile symlink to /var/db/repos/gentoo/profiles/...
+    # but no actual gentoo repo inside. Mount the host's repos to provide it.
+    gentoo_repo = SYSTEM_REPOS_DIR / "gentoo"
     container_cmd = [
         "podman",
         "run",
         "--rm",
+        "-v",
+        f"{gentoo_repo}:/var/db/repos/gentoo:ro",
         "-v",
         f"{REPO_DIR}:/var/db/repos/gentoo-ai-update-repo:ro",
         CONTAINER_IMAGE,
         "/bin/bash",
         "-c",
         f"""
-        # Add overlay
-        mkdir -p /etc/portage/repos.conf
-        echo '[gentoo-ai-update-repo]
-location = /var/db/repos/gentoo-ai-update-repo
-masters = gentoo' > /etc/portage/repos.conf/ai-overlay.conf
+set -e
 
-        # Try to emerge
-        emerge -1v ={category}/{package}-{version} && \
-        python3 /var/db/repos/gentoo-ai-update-repo/{category}/{package}/test_ebuild.py {version}
+# Configure repos
+mkdir -p /etc/portage/repos.conf
+cat > /etc/portage/repos.conf/gentoo.conf << 'REPOEOF'
+[DEFAULT]
+main-repo = gentoo
+
+[gentoo]
+location = /var/db/repos/gentoo
+REPOEOF
+
+cat > /etc/portage/repos.conf/ai-overlay.conf << 'REPOEOF'
+[gentoo-ai-update-repo]
+location = /var/db/repos/gentoo-ai-update-repo
+masters = gentoo
+REPOEOF
+
+# Emerge the package
+emerge -1v ={category}/{package}-{version}
+
+# Run smoke test
+python3 /var/db/repos/gentoo-ai-update-repo/{category}/{package}/test_ebuild.py {version}
         """,
     ]
 
-    result = run_cmd(container_cmd, timeout=900)  # 15 min timeout for emerge
+    result = run_cmd(container_cmd, timeout=1800)  # 30 min timeout for emerge
 
     if result.returncode == 0:
         log(f"Container test PASSED", "OK")
