@@ -52,7 +52,12 @@ def run_cmd(
 ) -> subprocess.CompletedProcess:
     """Run a command and return result. Does NOT raise on failure."""
     log(f"$ {' '.join(cmd)}")
-    r = subprocess.run(cmd, cwd=cwd, capture_output=capture, text=True)
+    if capture:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
+    else:
+        # Stream output to terminal in real-time, capture nothing
+        r = subprocess.run(cmd, cwd=cwd)
+        r = subprocess.CompletedProcess(cmd, r.returncode, stdout="", stderr="")
     return r
 
 
@@ -62,7 +67,7 @@ def run_ai(
     files: list[str] | None = None,
     model: str = AI_MODEL_WEB,
 ) -> subprocess.CompletedProcess:
-    """Invoke opencode AI agent and return result."""
+    """Invoke opencode AI agent and return result. Output streams to terminal."""
     cmd = ["opencode", "run", "-m", model]
     if files:
         for f in files:
@@ -70,7 +75,7 @@ def run_ai(
     cmd.append(prompt)
     log(f"AI invocation in {cwd}", "AI")
     log(f"  prompt: {prompt[:120]}{'...' if len(prompt) > 120 else ''}", "AI")
-    return run_cmd(cmd, cwd=cwd)
+    return run_cmd(cmd, cwd=cwd, capture=False)
 
 
 def parse_package_atom(atom: str) -> tuple[str, str, str | None]:
@@ -612,9 +617,9 @@ def run_container_test(
     check = run_cmd(["podman", "image", "exists", CONTAINER_IMAGE])
     if check.returncode != 0:
         log(f"Pulling {CONTAINER_IMAGE} (first time) ...", "AI")
-        pull = run_cmd(["podman", "pull", CONTAINER_IMAGE])
+        pull = run_cmd(["podman", "pull", CONTAINER_IMAGE], capture=False)
         if pull.returncode != 0:
-            log(f"Failed to pull container image: {pull.stderr}", "ERR")
+            log("Failed to pull container image", "ERR")
             return False
 
     # Run container with host repos mounted
@@ -663,17 +668,13 @@ python3 /var/db/repos/gentoo-ai-update-repo/{category}/{package}/test_ebuild.py 
         """,
     ]
 
-    result = run_cmd(container_cmd)
+    result = run_cmd(container_cmd, capture=False)
 
     if result.returncode == 0:
         log(f"Container test PASSED", "OK")
         return True
     else:
         log(f"Container test FAILED (exit {result.returncode})", "ERR")
-        if result.stdout:
-            log(f"stdout: {result.stdout[-500:]}", "ERR")
-        if result.stderr:
-            log(f"stderr: {result.stderr[-500:]}", "ERR")
         return False
 
 
