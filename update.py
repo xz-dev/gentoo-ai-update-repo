@@ -48,27 +48,18 @@ def log(msg: str, level: str = "INFO"):
 
 
 def run_cmd(
-    cmd: list[str], cwd: str | None = None, timeout: int = 300, capture: bool = True
+    cmd: list[str], cwd: str | None = None, capture: bool = True
 ) -> subprocess.CompletedProcess:
     """Run a command and return result. Does NOT raise on failure."""
     log(f"$ {' '.join(cmd)}")
-    try:
-        r = subprocess.run(
-            cmd, cwd=cwd, capture_output=capture, text=True, timeout=timeout
-        )
-        return r
-    except subprocess.TimeoutExpired:
-        log(f"Command timed out after {timeout}s", "ERR")
-        return subprocess.CompletedProcess(
-            cmd, returncode=124, stdout="", stderr="Timeout"
-        )
+    r = subprocess.run(cmd, cwd=cwd, capture_output=capture, text=True)
+    return r
 
 
 def run_ai(
     prompt: str,
     cwd: str,
     files: list[str] | None = None,
-    timeout: int = 300,
     model: str = AI_MODEL_WEB,
 ) -> subprocess.CompletedProcess:
     """Invoke opencode AI agent and return result."""
@@ -79,7 +70,7 @@ def run_ai(
     cmd.append(prompt)
     log(f"AI invocation in {cwd}", "AI")
     log(f"  prompt: {prompt[:120]}{'...' if len(prompt) > 120 else ''}", "AI")
-    return run_cmd(cmd, cwd=cwd, timeout=timeout)
+    return run_cmd(cmd, cwd=cwd)
 
 
 def parse_package_atom(atom: str) -> tuple[str, str, str | None]:
@@ -367,7 +358,7 @@ def ensure_get_latest_version_script(
         If it fails, fix it until it works.
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=120)
+    result = run_ai(prompt, cwd=str(pkg_dir))
     if result.returncode != 0:
         log(f"AI failed to create get_latest_version.py: {result.stderr}", "ERR")
         sys.exit(1)
@@ -390,7 +381,7 @@ def run_get_latest_version(
     """
     for attempt in range(1, MAX_VERSION_RETRIES + 1):
         log(f"Running get_latest_version.py (attempt {attempt}/{MAX_VERSION_RETRIES})")
-        result = run_cmd(["python3", str(script_path)], cwd=str(pkg_dir), timeout=60)
+        result = run_cmd(["python3", str(script_path)], cwd=str(pkg_dir))
 
         if result.returncode == 0:
             version = result.stdout.strip()
@@ -428,10 +419,10 @@ def run_get_latest_version(
         Read CLAUDE.md for package info. Test the fix by running: python3 get_latest_version.py
     """)
 
-    fix_result = run_ai(fix_prompt, cwd=str(pkg_dir), timeout=120)
+    fix_result = run_ai(fix_prompt, cwd=str(pkg_dir))
 
     # Retry once after fix
-    result = run_cmd(["python3", str(script_path)], cwd=str(pkg_dir), timeout=60)
+    result = run_cmd(["python3", str(script_path)], cwd=str(pkg_dir))
     if result.returncode == 0:
         version = result.stdout.strip()
         if version and re.match(r"^[0-9]", version):
@@ -464,14 +455,12 @@ def _ai_web_search_version(pkg_dir: Path, category: str, package: str) -> str | 
         The script must output exactly one line: the version number (no 'v' prefix).
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=180)
+    result = run_ai(prompt, cwd=str(pkg_dir))
 
     # Try running the (presumably fixed) script
     script_path = pkg_dir / "get_latest_version.py"
     if script_path.exists():
-        run_result = run_cmd(
-            ["python3", str(script_path)], cwd=str(pkg_dir), timeout=60
-        )
+        run_result = run_cmd(["python3", str(script_path)], cwd=str(pkg_dir))
         if run_result.returncode == 0:
             version = run_result.stdout.strip()
             if version and re.match(r"^[0-9]", version):
@@ -514,7 +503,7 @@ def update_ebuild(pkg_dir: Path, category: str, package: str, new_version: str) 
         Do NOT commit anything.
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=180, model=AI_MODEL_CODE)
+    result = run_ai(prompt, cwd=str(pkg_dir), model=AI_MODEL_CODE)
 
     # Verify the new ebuild was created
     new_ebuild = pkg_dir / f"{package}-{new_version}.ebuild"
@@ -569,7 +558,7 @@ def ensure_test_script(pkg_dir: Path, category: str, package: str) -> Path | Non
         Read CLAUDE.md for package info.
     """)
 
-    result = run_ai(prompt, cwd=str(pkg_dir), timeout=120, model=AI_MODEL_CODE)
+    result = run_ai(prompt, cwd=str(pkg_dir), model=AI_MODEL_CODE)
 
     if script_path.exists():
         log("test_ebuild.py created", "OK")
@@ -594,7 +583,7 @@ def run_container_test(
     check = run_cmd(["podman", "image", "exists", CONTAINER_IMAGE])
     if check.returncode != 0:
         log(f"Pulling {CONTAINER_IMAGE} (first time) ...", "AI")
-        pull = run_cmd(["podman", "pull", CONTAINER_IMAGE], timeout=600)
+        pull = run_cmd(["podman", "pull", CONTAINER_IMAGE])
         if pull.returncode != 0:
             log(f"Failed to pull container image: {pull.stderr}", "ERR")
             return False
@@ -641,7 +630,7 @@ python3 /var/db/repos/gentoo-ai-update-repo/{category}/{package}/test_ebuild.py 
         """,
     ]
 
-    result = run_cmd(container_cmd, timeout=1800)  # 30 min timeout for emerge
+    result = run_cmd(container_cmd)
 
     if result.returncode == 0:
         log(f"Container test PASSED", "OK")
