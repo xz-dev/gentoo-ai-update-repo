@@ -568,9 +568,9 @@ def ensure_test_script(pkg_dir: Path, category: str, package: str) -> Path | Non
     gentoo_repo = SYSTEM_REPOS_DIR / "gentoo"
     test_version = get_latest_version_from_ebuilds(pkg_dir, package) or "VERSION"
     podman_test_cmd = (
-        f"podman run --rm --privileged"
-        f" -v {gentoo_repo}:/var/db/repos/gentoo:ro"
-        f" -v {REPO_DIR}:/var/db/repos/gentoo-ai-update-repo"
+        f"podman run --rm"
+        f" -v {gentoo_repo}:/var/db/repos/gentoo:ro,Z"
+        f" -v {REPO_DIR}:/var/db/repos/gentoo-ai-update-repo:Z"
         f" {CONTAINER_IMAGE} /bin/bash -c '"
         f"mkdir -p /etc/portage/repos.conf && "
         f'echo "[DEFAULT]\nmain-repo = gentoo\n[gentoo]\nlocation = /var/db/repos/gentoo" > /etc/portage/repos.conf/gentoo.conf && '
@@ -651,11 +651,10 @@ def run_container_test(
         "podman",
         "run",
         "--rm",
-        "--privileged",
         "-v",
-        f"{gentoo_repo}:/var/db/repos/gentoo:ro",
+        f"{gentoo_repo}:/var/db/repos/gentoo:ro,Z",
         "-v",
-        f"{REPO_DIR}:/var/db/repos/gentoo-ai-update-repo:ro",
+        f"{REPO_DIR}:/var/db/repos/gentoo-ai-update-repo:ro,Z",
         CONTAINER_IMAGE,
         "/bin/bash",
         "-c",
