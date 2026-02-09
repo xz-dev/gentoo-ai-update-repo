@@ -22,6 +22,8 @@ import textwrap
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from portage.versions import vercmp
+
 # ─── Constants ────────────────────────────────────────────────────────────────
 
 REPO_DIR = Path("/var/db/repos/gentoo-ai-update-repo")
@@ -118,15 +120,6 @@ def find_source_package(
     return None
 
 
-def get_ebuilds(pkg_dir: Path) -> list[Path]:
-    """Return sorted list of ebuild files (excluding 9999)."""
-    ebuilds = sorted(
-        [p for p in pkg_dir.glob("*.ebuild") if "-9999" not in p.stem],
-        key=lambda p: p.stem,
-    )
-    return ebuilds
-
-
 def extract_version_from_ebuild(ebuild_path: Path, pkg_name: str) -> str:
     """Extract version from ebuild filename: package-VERSION.ebuild → VERSION."""
     stem = ebuild_path.stem  # e.g. "neovim-0.11.5" or "neovim-0.11.3-r1"
@@ -135,9 +128,33 @@ def extract_version_from_ebuild(ebuild_path: Path, pkg_name: str) -> str:
     return stem
 
 
+def _version_sort_key(pkg_name: str):
+    """Return a sort key function that uses portage vercmp."""
+    import functools
+
+    def cmp_ebuilds(a: Path, b: Path) -> int:
+        va = extract_version_from_ebuild(a, pkg_name)
+        vb = extract_version_from_ebuild(b, pkg_name)
+        return vercmp(va, vb) or 0
+
+    return functools.cmp_to_key(cmp_ebuilds)
+
+
+def get_ebuilds(pkg_dir: Path, pkg_name: str | None = None) -> list[Path]:
+    """Return sorted list of ebuild files (excluding 9999), ordered by version.
+
+    If pkg_name is provided, uses portage vercmp for correct version ordering.
+    Otherwise falls back to filename sorting.
+    """
+    candidates = [p for p in pkg_dir.glob("*.ebuild") if "-9999" not in p.stem]
+    if pkg_name:
+        return sorted(candidates, key=_version_sort_key(pkg_name))
+    return sorted(candidates, key=lambda p: p.stem)
+
+
 def get_latest_version_from_ebuilds(pkg_dir: Path, pkg_name: str) -> str | None:
-    """Get the highest version from existing ebuilds."""
-    ebuilds = get_ebuilds(pkg_dir)
+    """Get the highest version from existing ebuilds (using portage vercmp)."""
+    ebuilds = get_ebuilds(pkg_dir, pkg_name)
     if not ebuilds:
         return None
     return extract_version_from_ebuild(ebuilds[-1], pkg_name)
@@ -145,14 +162,18 @@ def get_latest_version_from_ebuilds(pkg_dir: Path, pkg_name: str) -> str | None:
 
 def version_exists(pkg_dir: Path, pkg_name: str, version: str) -> bool:
     """Check if an ebuild for this version already exists."""
-    # Check exact version and any revision
     for eb in pkg_dir.glob(f"{pkg_name}-{version}*.ebuild"):
         v = extract_version_from_ebuild(eb, pkg_name)
-        # Match base version (ignoring -rN suffix)
         base_v = re.sub(r"-r\d+$", "", v)
         if base_v == version:
             return True
     return False
+
+
+def is_newer_version(upstream: str, local: str) -> bool:
+    """Return True if upstream version is strictly newer than local version."""
+    result = vercmp(upstream, local)
+    return result is not None and result > 0
 
 
 # ─── Package Analysis ─────────────────────────────────────────────────────────
@@ -313,7 +334,7 @@ def setup_package(category: str, package: str, repo_hint: str | None) -> Path:
             shutil.copy2(item, dest)
 
     # Generate package CLAUDE.md
-    ebuilds = get_ebuilds(our_pkg_dir)
+    ebuilds = get_ebuilds(our_pkg_dir, package)
     if ebuilds:
         ebuild_info = extract_ebuild_info(ebuilds[-1])
         remote_id = extract_remote_id(our_pkg_dir / "metadata.xml")
@@ -480,7 +501,7 @@ def update_ebuild(pkg_dir: Path, category: str, package: str, new_version: str) 
     """Ask AI to create new version ebuild, generate manifest, run pkgcheck."""
     log(f"Updating ebuild to version {new_version} ...", "AI")
 
-    ebuilds = get_ebuilds(pkg_dir)
+    ebuilds = get_ebuilds(pkg_dir, package)
     if not ebuilds:
         log("No existing ebuilds to base update on", "ERR")
         return False
@@ -736,17 +757,25 @@ def main():
         log("Could not determine latest version. Exiting.", "ERR")
         sys.exit(1)
 
-    # Step 4: Check if we already have this version
-    if not args.force and version_exists(pkg_dir, package, new_version):
-        current = get_latest_version_from_ebuilds(pkg_dir, package)
-        log(
-            f"Already up to date: {category}/{package}-{current} (upstream: {new_version})",
-            "OK",
-        )
-        sys.exit(0)
+    # Step 4: Compare versions using portage vercmp
+    current = get_latest_version_from_ebuilds(pkg_dir, package)
+
+    if not args.force:
+        if version_exists(pkg_dir, package, new_version):
+            log(
+                f"Already up to date: {category}/{package}-{current} (upstream: {new_version})",
+                "OK",
+            )
+            sys.exit(0)
+
+        if current and not is_newer_version(new_version, current):
+            log(
+                f"Upstream {new_version} is NOT newer than local {current} — skipping (possible downgrade)",
+                "WARN",
+            )
+            sys.exit(0)
 
     if args.dry_run:
-        current = get_latest_version_from_ebuilds(pkg_dir, package)
         log(f"Update available: {current} → {new_version}", "OK")
         sys.exit(0)
 
